@@ -158,6 +158,17 @@ export default function App() {
       const data = await res.json();
       setUploadResults(data);
 
+      // Save the last used Pinecone namespace to localStorage (key = "namespace")
+      // This comes from the backend after successful RAG indexing (derived from zip/folder name)
+      if (data.results && data.results.length > 0) {
+        const lastResult = data.results[data.results.length - 1];
+        const namespace = lastResult?.rag_indexing?.namespace;
+        if (namespace) {
+          localStorage.setItem("namespace", namespace);
+          console.log("[Frontend] Saved namespace to localStorage:", namespace);
+        }
+      }
+
       // Mark all files as 100% complete in the UI
       const completed = {};
       files.forEach((f) => {
