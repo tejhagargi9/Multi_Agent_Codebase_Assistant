@@ -3,6 +3,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+from dotenv import load_dotenv
+
+# Load environment variables from .env (must be before any code that reads OPENAI/PINECONE keys)
+load_dotenv()
 
 from routes.upload import router as upload_router
 

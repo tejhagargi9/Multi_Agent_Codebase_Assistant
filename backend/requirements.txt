@@ -1,3 +1,13 @@
 fastapi
 uvicorn
 python-multipart
+
+# RAG / Vector Search
+langchain
+langchain-text-splitters
+langchain-openai
+langchain-pinecone
+pinecone
+
+# Environment loading
+python-dotenv

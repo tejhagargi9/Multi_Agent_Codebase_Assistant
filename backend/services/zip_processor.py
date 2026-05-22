@@ -2,8 +2,11 @@ import tempfile
 import zipfile
 import os
 import shutil
+import logging
 from pathlib import Path
 from fastapi import UploadFile
+
+logger = logging.getLogger(__name__)
 
 IGNORED_DIRS = {
     "node_modules", ".git", "__pycache__", ".next", "dist", "build",
@@ -50,8 +53,11 @@ async def process_uploaded_zip(upload_file: UploadFile) -> dict:
     """
     Saves the uploaded zip to a temp file, extracts it, walks the tree with os.walk,
     skips ignored dirs/files, reads text content of code/text files, prints to console,
-    and returns a summary with previews for the frontend.
+    prepares full documents for RAG, and returns analysis + raw documents.
     """
+    filename = upload_file.filename or "unknown.zip"
+    logger.info(f"[ZIP] Starting extraction + crawl for: {filename}")
+
     # Save uploaded file to temporary zip
     with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as tmp_zip:
         file_content = await upload_file.read()
@@ -60,6 +66,7 @@ async def process_uploaded_zip(upload_file: UploadFile) -> dict:
 
     extract_dir = tempfile.mkdtemp(prefix="zip_extract_")
     analyzed_files = []
+    documents_for_rag = []
     skipped_count = 0
     total_files_seen = 0
 
@@ -132,9 +139,18 @@ async def process_uploaded_zip(upload_file: UploadFile) -> dict:
                         "preview": preview
                     })
 
+                    # Full content for RAG indexing (prepare step)
+                    documents_for_rag.append({
+                        "path": rel_path,
+                        "content": content,
+                        "zip_name": upload_file.filename,
+                    })
+
                 except Exception as read_err:
                     skipped_count += 1
                     print(f"[WARN] Could not read {rel_path}: {read_err}")
+
+        logger.info(f"[ZIP] Crawl complete — analyzed={len(analyzed_files)}, skipped={skipped_count}, rag_docs={len(documents_for_rag)}")
 
         return {
             "zip_name": upload_file.filename,
@@ -142,7 +158,8 @@ async def process_uploaded_zip(upload_file: UploadFile) -> dict:
             "files_analyzed": len(analyzed_files),
             "skipped_files": skipped_count,
             "total_files_in_archive": total_files_seen,
-            "files": analyzed_files
+            "files": analyzed_files,
+            "documents": documents_for_rag,   # for RAG pipeline (chunk → embed → vector DB)
         }
 
     except zipfile.BadZipFile:
