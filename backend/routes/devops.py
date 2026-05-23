@@ -5,6 +5,7 @@ from typing import Optional
 from services.devops.retriever import retrieve
 from services.devops.analyzer import analyze
 from services.devops.fix_generator import generate_fix
+from services.devops.reviewer import review
 from services.devops.state import DevOpsState
 from services.devops.session_store import get_session, save_session, update_session
 
@@ -123,5 +124,47 @@ async def devops_fix(req: FixRequest):
     return {
         "query": req.query,
         "generated_fix": generated_fix,
+        "session_id": req.session_id,
+    }
+
+
+class ReviewRequest(BaseModel):
+    query: str
+    session_id: Optional[str] = None
+
+
+@router.post("/review")
+async def devops_review(req: ReviewRequest):
+    """
+    Reviewer agent.
+    Critically reviews the proposed fix using the full pipeline context
+    (retrieved_code + bug_analysis + generated_fix) stored in DevOpsState.
+    """
+    retrieved_code = ""
+    bug_analysis = ""
+    generated_fix = ""
+
+    if req.session_id:
+        stored = get_session(req.session_id)
+        if stored:
+            retrieved_code = stored.get("retrieved_code", "")
+            bug_analysis = stored.get("bug_analysis", "")
+            generated_fix = stored.get("generated_fix", "")
+
+    state: DevOpsState = {
+        "user_query": req.query.strip(),
+        "retrieved_code": retrieved_code,
+        "bug_analysis": bug_analysis,
+        "generated_fix": generated_fix,
+    }
+    result = await review(state)
+    review_feedback = result.get("review_feedback", "")
+
+    if req.session_id:
+        update_session(req.session_id, {"review_feedback": review_feedback})
+
+    return {
+        "query": req.query,
+        "review_feedback": review_feedback,
         "session_id": req.session_id,
     }

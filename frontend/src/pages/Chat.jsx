@@ -334,53 +334,29 @@ export default function DevOpsAgentChat() {
       return;
     }
 
-    // === Remaining simulated agent (Reviewer) still uses Anthropic ===
-    try {
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          stream: true,
-          system: agent.persona,
-          messages: [{ role: "user", content: query }],
-        }),
-      });
-
-      const reader = resp.body.getReader();
-      const dec = new TextDecoder();
-      let buf = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop();
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const d = line.slice(6).trim();
-            if (d === "[DONE]") continue;
-            try {
-              const parsed = JSON.parse(d);
-              if (parsed.type === "content_block_delta" && parsed.delta?.type === "text_delta") {
-                setAgentMessages((p) => ({
-                  ...p,
-                  [`${roundId}-${agent.id}`]: (p[`${roundId}-${agent.id}`] || "") + parsed.delta.text,
-                }));
-              }
-            } catch {}
-          }
-        }
+    // === REAL BACKEND REVIEWER (fourth & final agent) ===
+    if (agent.id === "reviewer") {
+      try {
+        const resp = await fetch("http://127.0.0.1:8000/devops/review", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            query, 
+            session_id: roundId,   // backend pulls full context from DevOpsState
+          }),
+        });
+        const data = await resp.json();
+        const text = data.review_feedback || "No review feedback generated.";
+        updateAgentMessage(`${roundId}-${agent.id}`, text);
+      } catch {
+        updateAgentMessage(`${roundId}-${agent.id}`, "⚠ Could not reach the backend reviewer.");
       }
-    } catch {
-      setAgentMessages((p) => ({
-        ...p,
-        [`${roundId}-${agent.id}`]: "⚠ Could not reach the API.",
-      }));
+      setStreaming((p) => ({ ...p, [agent.id]: false }));
+      return;
     }
 
+    // === All 4 agents are now real backend agents ===
+    // If we reach here, it means an unknown agent id was passed
     setStreaming((p) => ({ ...p, [agent.id]: false }));
   };
 

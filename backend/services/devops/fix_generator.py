@@ -14,7 +14,7 @@ def _get_model():
     return ChatOpenAI(
         model="gpt-4o-mini",
         temperature=0.2,
-        max_tokens=1500,
+        max_tokens=5000,
     )
 
 
