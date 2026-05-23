@@ -9,5 +9,8 @@ langchain-openai
 langchain-pinecone
 pinecone
 
+# Multi-agent orchestration
+langgraph
+
 # Environment loading
 python-dotenv

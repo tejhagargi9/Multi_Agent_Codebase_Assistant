@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from routes.upload import router as upload_router
+from routes.devops import router as devops_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,6 +33,9 @@ app.add_middleware(
 
 # Mount upload routes (zip analysis)
 app.include_router(upload_router)
+
+# Mount DevOps multi-agent routes (retriever + future analyzer/fix/review)
+app.include_router(devops_router)
 
 class ItemBase(BaseModel):
     name: str

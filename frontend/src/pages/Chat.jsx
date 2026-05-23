@@ -93,7 +93,6 @@ function formatContent(text) {
   const lines = text.split("\n");
   const result = [];
   let inCode = false;
-  let codeLang = "";
   let codeLines = [];
   let key = 0;
 
@@ -102,7 +101,6 @@ function formatContent(text) {
     if (line.startsWith("```")) {
       if (!inCode) {
         inCode = true;
-        codeLang = line.slice(3).trim();
         codeLines = [];
       } else {
         result.push(
@@ -262,6 +260,31 @@ export default function DevOpsAgentChat() {
       setVisibleCards((p) => ({ ...p, [`${roundId}-${agent.id}`]: true }));
     }, AGENTS.indexOf(agent) * 80);
 
+    // === REAL BACKEND RETRIEVER (first agent) ===
+    if (agent.id === "retriever") {
+      try {
+        const resp = await fetch("http://127.0.0.1:8000/devops/retrieve", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query }),
+        });
+        const data = await resp.json();
+        const text = data.retrieved_code || "No relevant code found in the indexed codebase.";
+        setAgentMessages((p) => ({
+          ...p,
+          [`${roundId}-${agent.id}`]: text,
+        }));
+      } catch {
+        setAgentMessages((p) => ({
+          ...p,
+          [`${roundId}-${agent.id}`]: "⚠ Could not reach the backend retriever.",
+        }));
+      }
+      setStreaming((p) => ({ ...p, [agent.id]: false }));
+      return;
+    }
+
+    // === Existing simulated agents (Analyzer, Fixer, Reviewer) still use Anthropic ===
     try {
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
