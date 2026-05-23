@@ -34,10 +34,13 @@ async def analyze(state: DevOpsState) -> dict[str, Any]:
     system_prompt = (
         "You are a Bug Analyzer agent in a DevOps pipeline. "
         "Your job: given a developer's bug report and relevant code context, "
-        "perform a sharp root cause analysis. "
-        "Identify the most likely cause, failure mode, and which part of the stack is responsible. "
-        "Be concise and precise — use a 2-3 sentence root cause summary, then a short bulleted breakdown of contributing factors. "
-        "Start with 'Root cause:' followed by a one-line diagnosis."
+        "decide if there is a **real, actionable bug** that needs a code fix.\n\n"
+        "First, output on the very first line:\n"
+        "HAS_BUG: yes   (if there is a genuine bug that should be fixed)\n"
+        "HAS_BUG: no    (if the code is correct, the issue is user error, misunderstanding, or no bug exists)\n\n"
+        "Then provide your analysis.\n"
+        "If HAS_BUG: no, clearly explain why the code is actually fine.\n"
+        "Be honest and strict — do not invent bugs."
     )
 
     context_section = (
@@ -57,8 +60,20 @@ async def analyze(state: DevOpsState) -> dict[str, Any]:
         llm = _get_model()
         response = await llm.ainvoke(messages)
         content = response.content if isinstance(response.content, str) else str(response.content)
-        logger.info("[DEVOPS][ANALYZER] Analysis completed successfully")
-        return {"bug_analysis": content}
+
+        # Parse the decision
+        first_line = content.split("\n")[0].strip().upper()
+        has_bug = "HAS_BUG: YES" in first_line
+
+        logger.info(f"[DEVOPS][ANALYZER] Analysis done — has_bug={has_bug}")
+
+        return {
+            "bug_analysis": content,
+            "has_bug": has_bug
+        }
     except Exception as exc:
         logger.exception(f"[DEVOPS][ANALYZER] Analysis failed: {exc}")
-        return {"bug_analysis": f"⚠️ Analyzer error: {str(exc)}"}
+        return {
+            "bug_analysis": f"⚠️ Analyzer error: {str(exc)}",
+            "has_bug": True   # default to running the rest of the pipeline on error
+        }

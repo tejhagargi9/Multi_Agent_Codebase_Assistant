@@ -300,17 +300,21 @@ export default function DevOpsAgentChat() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
             query, 
-            session_id: roundId,           // backend will pull retrieved_code from DevOpsState
+            session_id: roundId,
           }),
         });
         const data = await resp.json();
         const text = data.bug_analysis || "No analysis generated.";
         updateAgentMessage(`${roundId}-${agent.id}`, text);
+        
+        // Return data so handleSubmit can decide whether to run Fixer
+        setStreaming((p) => ({ ...p, [agent.id]: false }));
+        return data;   // ← important for dynamic routing
       } catch {
         updateAgentMessage(`${roundId}-${agent.id}`, "⚠ Could not reach the backend analyzer.");
+        setStreaming((p) => ({ ...p, [agent.id]: false }));
+        return { has_bug: true }; // default to running the pipeline
       }
-      setStreaming((p) => ({ ...p, [agent.id]: false }));
-      return;
     }
 
     // === REAL BACKEND FIX GENERATOR (third agent) ===
@@ -377,10 +381,21 @@ export default function DevOpsAgentChat() {
 
       setHistory((p) => [...p, { type: "user", text: q }, { type: "agents", roundId }]);
 
-      // Run agents sequentially so later agents (analyzer, etc.) can use output from previous ones
-      for (const agent of AGENTS) {
-        await streamAgent(agent, q, roundId);
+      // === Dynamic Agentic Flow (Analyzer decides the path) ===
+      await streamAgent(AGENTS[0], q, roundId);                    // 1. Retriever
+
+      const analyzerData = await streamAgent(AGENTS[1], q, roundId); // 2. Analyzer (returns has_bug)
+
+      const hasRealBug = analyzerData?.has_bug !== false;
+
+      if (hasRealBug) {
+        await streamAgent(AGENTS[2], q, roundId);                  // 3a. Fix Generator (only if bug exists)
+      } else {
+        updateAgentMessage(`${roundId}-fixer`, "✅ Analyzer determined there is no actionable bug. The code is correct.");
       }
+
+      await streamAgent(AGENTS[3], q, roundId);                    // 4. Reviewer (always runs)
+
       setIsLoading(false);
     },
     [input, isLoading]

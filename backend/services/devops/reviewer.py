@@ -35,11 +35,11 @@ async def review(state: DevOpsState) -> dict[str, Any]:
 
     system_prompt = (
         "You are a Code Reviewer agent in a DevOps pipeline. "
-        "Your job: review a proposed fix critically but constructively. "
-        "Check for: correctness, edge cases missed, potential regressions, code style, "
-        "and whether the fix actually addresses the root cause. "
-        "Give a verdict (✅ Approve / ⚠️ Approve with changes / ❌ Request changes), "
-        "then 2-4 bullet points of specific feedback. "
+        "Review the work of previous agents.\n\n"
+        "If the Analyzer concluded there is **no bug** (HAS_BUG: no), then give a positive review:\n"
+        "✅ No bug found — the code is correct / the reported issue is not a real bug.\n"
+        "Explain briefly why.\n\n"
+        "If there was a proposed fix, review it normally with verdict + bullets.\n"
         "Start with your verdict on a single line."
     )
 

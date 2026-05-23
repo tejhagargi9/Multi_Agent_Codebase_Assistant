@@ -78,13 +78,18 @@ async def devops_analyze(req: AnalyzeRequest):
     }
     result = await analyze(state)
     bug_analysis = result.get("bug_analysis", "")
+    has_bug = result.get("has_bug", True)
 
     if req.session_id:
-        update_session(req.session_id, {"bug_analysis": bug_analysis})
+        update_session(req.session_id, {
+            "bug_analysis": bug_analysis,
+            "has_bug": has_bug
+        })
 
     return {
         "query": req.query,
         "bug_analysis": bug_analysis,
+        "has_bug": has_bug,
         "session_id": req.session_id,
     }
 
