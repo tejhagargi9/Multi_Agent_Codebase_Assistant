@@ -159,6 +159,15 @@ export default function Upload() {
       const data = await res.json();
       setUploadResults(data);
 
+      // Save namespace (zip name without extension) so Chat can use it for scoped Pinecone retrieval
+      if (data.results && data.results.length > 0) {
+        const firstResult = data.results.find(r => r.zip_name) || data.results[0];
+        if (firstResult?.zip_name) {
+          const ns = firstResult.zip_name.replace(/\.zip$/i, '');
+          localStorage.setItem('namespace', ns);
+        }
+      }
+
       const completed = {};
       files.forEach((f) => {
         completed[f.name] = 100;

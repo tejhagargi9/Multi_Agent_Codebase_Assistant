@@ -68,7 +68,7 @@ def index_documents(raw_files: list[dict], namespace: str | None = None) -> dict
     logger.info("[RAG] Chunking documents with RecursiveCharacterTextSplitter (1000/200)...")
     text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
-        chunk_overlap=200,
+        chunk_overlap=250,
         add_start_index=True,
     )
     all_splits = text_splitter.split_documents(documents)

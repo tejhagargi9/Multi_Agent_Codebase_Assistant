@@ -13,18 +13,19 @@ async def retrieve(state: DevOpsState) -> dict[str, Any]:
         logger.warning("[DEVOPS][RETRIEVER] Empty user_query — skipping retrieval")
         return {"retrieved_code": ""}
 
-    namespace = state.get("namespace")
+    raw_ns = state.get("namespace")
+    namespace = raw_ns.strip() if isinstance(raw_ns, str) and raw_ns.strip() else None
 
     logger.info(f"[DEVOPS][RETRIEVER] Starting retrieval for query: {query[:100]}... (namespace={namespace or 'default'})")
 
     try:
         vector_store = get_vector_store()
 
-        docs = await vector_store.asimilarity_search(
-            query,
-            k=15,
-            namespace=namespace,
-        )
+        search_kwargs = {"k": 15}
+        if namespace:
+            search_kwargs["namespace"] = namespace
+
+        docs = await vector_store.asimilarity_search(query, **search_kwargs)
 
         if not docs:
             logger.info("[DEVOPS][RETRIEVER] No relevant chunks found in Pinecone")

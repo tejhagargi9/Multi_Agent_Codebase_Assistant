@@ -248,6 +248,15 @@ export default function DevOpsAgentChat() {
   const [activeRound, setActiveRound] = useState(null);
   const bottomRef = useRef(null);
   const textareaRef = useRef(null);
+  const agentMessagesRef = useRef({});
+
+  const updateAgentMessage = (key, text) => {
+    setAgentMessages((prev) => {
+      const next = { ...prev, [key]: text };
+      agentMessagesRef.current = next;
+      return next;
+    });
+  };
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -263,28 +272,48 @@ export default function DevOpsAgentChat() {
     // === REAL BACKEND RETRIEVER (first agent) ===
     if (agent.id === "retriever") {
       try {
+        const namespace = localStorage.getItem('namespace');
         const resp = await fetch("http://127.0.0.1:8000/devops/retrieve", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ query }),
+          body: JSON.stringify({ 
+            query, 
+            namespace: namespace || null,
+            session_id: roundId,     // so backend can store in DevOpsState
+          }),
         });
         const data = await resp.json();
         const text = data.retrieved_code || "No relevant code found in the indexed codebase.";
-        setAgentMessages((p) => ({
-          ...p,
-          [`${roundId}-${agent.id}`]: text,
-        }));
+        updateAgentMessage(`${roundId}-${agent.id}`, text);
       } catch {
-        setAgentMessages((p) => ({
-          ...p,
-          [`${roundId}-${agent.id}`]: "⚠ Could not reach the backend retriever.",
-        }));
+        updateAgentMessage(`${roundId}-${agent.id}`, "⚠ Could not reach the backend retriever.");
       }
       setStreaming((p) => ({ ...p, [agent.id]: false }));
       return;
     }
 
-    // === Existing simulated agents (Analyzer, Fixer, Reviewer) still use Anthropic ===
+    // === REAL BACKEND BUG ANALYZER (second agent) ===
+    if (agent.id === "analyzer") {
+      try {
+        const resp = await fetch("http://127.0.0.1:8000/devops/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            query, 
+            session_id: roundId,           // backend will pull retrieved_code from DevOpsState
+          }),
+        });
+        const data = await resp.json();
+        const text = data.bug_analysis || "No analysis generated.";
+        updateAgentMessage(`${roundId}-${agent.id}`, text);
+      } catch {
+        updateAgentMessage(`${roundId}-${agent.id}`, "⚠ Could not reach the backend analyzer.");
+      }
+      setStreaming((p) => ({ ...p, [agent.id]: false }));
+      return;
+    }
+
+    // === Remaining simulated agents (Fixer, Reviewer) still use Anthropic ===
     try {
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
@@ -340,6 +369,7 @@ export default function DevOpsAgentChat() {
       if (!q || isLoading) return;
 
       const roundId = Date.now().toString();
+      agentMessagesRef.current = {};
       setInput("");
       setIsLoading(true);
       setActiveRound(roundId);
@@ -350,7 +380,10 @@ export default function DevOpsAgentChat() {
 
       setHistory((p) => [...p, { type: "user", text: q }, { type: "agents", roundId }]);
 
-      await Promise.all(AGENTS.map((a) => streamAgent(a, q, roundId)));
+      // Run agents sequentially so later agents (analyzer, etc.) can use output from previous ones
+      for (const agent of AGENTS) {
+        await streamAgent(agent, q, roundId);
+      }
       setIsLoading(false);
     },
     [input, isLoading]
