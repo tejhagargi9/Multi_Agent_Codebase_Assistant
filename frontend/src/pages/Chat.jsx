@@ -313,7 +313,28 @@ export default function DevOpsAgentChat() {
       return;
     }
 
-    // === Remaining simulated agents (Fixer, Reviewer) still use Anthropic ===
+    // === REAL BACKEND FIX GENERATOR (third agent) ===
+    if (agent.id === "fixer") {
+      try {
+        const resp = await fetch("http://127.0.0.1:8000/devops/fix", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            query, 
+            session_id: roundId,   // backend pulls retrieved_code + bug_analysis from DevOpsState
+          }),
+        });
+        const data = await resp.json();
+        const text = data.generated_fix || "No fix generated.";
+        updateAgentMessage(`${roundId}-${agent.id}`, text);
+      } catch {
+        updateAgentMessage(`${roundId}-${agent.id}`, "⚠ Could not reach the backend fix generator.");
+      }
+      setStreaming((p) => ({ ...p, [agent.id]: false }));
+      return;
+    }
+
+    // === Remaining simulated agent (Reviewer) still uses Anthropic ===
     try {
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",

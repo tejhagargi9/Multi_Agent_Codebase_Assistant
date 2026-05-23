@@ -4,6 +4,7 @@ from typing import Optional
 
 from services.devops.retriever import retrieve
 from services.devops.analyzer import analyze
+from services.devops.fix_generator import generate_fix
 from services.devops.state import DevOpsState
 from services.devops.session_store import get_session, save_session, update_session
 
@@ -75,8 +76,52 @@ async def devops_analyze(req: AnalyzeRequest):
         "retrieved_code": retrieved_code,
     }
     result = await analyze(state)
+    bug_analysis = result.get("bug_analysis", "")
+
+    if req.session_id:
+        update_session(req.session_id, {"bug_analysis": bug_analysis})
+
     return {
         "query": req.query,
-        "bug_analysis": result.get("bug_analysis", ""),
+        "bug_analysis": bug_analysis,
+        "session_id": req.session_id,
+    }
+
+
+class FixRequest(BaseModel):
+    query: str
+    session_id: Optional[str] = None
+
+
+@router.post("/fix")
+async def devops_fix(req: FixRequest):
+    """
+    Fix Generator agent.
+    Uses OpenAI to propose a concrete code fix based on the bug analysis
+    and retrieved code stored in the shared DevOpsState for this session.
+    """
+    retrieved_code = ""
+    bug_analysis = ""
+
+    if req.session_id:
+        stored = get_session(req.session_id)
+        if stored:
+            retrieved_code = stored.get("retrieved_code", "")
+            bug_analysis = stored.get("bug_analysis", "")
+
+    state: DevOpsState = {
+        "user_query": req.query.strip(),
+        "retrieved_code": retrieved_code,
+        "bug_analysis": bug_analysis,
+    }
+    result = await generate_fix(state)
+    generated_fix = result.get("generated_fix", "")
+
+    if req.session_id:
+        update_session(req.session_id, {"generated_fix": generated_fix})
+
+    return {
+        "query": req.query,
+        "generated_fix": generated_fix,
         "session_id": req.session_id,
     }
