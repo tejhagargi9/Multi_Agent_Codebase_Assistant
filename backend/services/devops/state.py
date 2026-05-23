@@ -34,6 +34,7 @@ class DevOpsState(TypedDict, total=False):  # total=False allows incremental pop
     namespace: Optional[str]
     retrieved_code: str
     bug_analysis: str
+    has_bug: bool
     generated_fix: str
     review_feedback: str
     final_response: str

@@ -212,7 +212,22 @@ function AgentCard({ agent, message, isStreaming, index, isVisible }) {
         {!message && !isStreaming ? (
           <p className="text-slate-700 text-sm italic">Waiting in queue…</p>
         ) : isStreaming && !message ? (
-          <TypingDots color={agent.color} />
+          // Nice thinking bubble while response is coming from LangGraph
+          <div 
+            className="inline-flex items-center gap-3 px-4 py-2.5 rounded-2xl border transition-all"
+            style={{ 
+              background: `${agent.color}12`, 
+              borderColor: `${agent.color}30` 
+            }}
+          >
+            <TypingDots color={agent.color} />
+            <span 
+              className="text-xs font-medium tracking-wide"
+              style={{ color: agent.color }}
+            >
+              Thinking…
+            </span>
+          </div>
         ) : (
           <div className="space-y-0.5">{formatContent(message)}</div>
         )}
@@ -262,107 +277,17 @@ export default function DevOpsAgentChat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [history, agentMessages]);
 
+  // ============================================================
+  // DEPRECATED: streamAgent function
+  // Previously used for calling individual agents.
+  // Now the entire pipeline runs via a single /devops/run (LangGraph) call.
+  // Keeping the function for reference / future debugging.
+  // ============================================================
+  /*
   const streamAgent = async (agent, query, roundId) => {
-    setStreaming((p) => ({ ...p, [agent.id]: true }));
-
-    setTimeout(() => {
-      setVisibleCards((p) => ({ ...p, [`${roundId}-${agent.id}`]: true }));
-    }, AGENTS.indexOf(agent) * 80);
-
-    // === REAL BACKEND RETRIEVER (first agent) ===
-    if (agent.id === "retriever") {
-      try {
-        const namespace = localStorage.getItem('namespace');
-        const resp = await fetch("http://127.0.0.1:8000/devops/retrieve", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            query, 
-            namespace: namespace || null,
-            session_id: roundId,     // so backend can store in DevOpsState
-          }),
-        });
-        const data = await resp.json();
-        const text = data.retrieved_code || "No relevant code found in the indexed codebase.";
-        updateAgentMessage(`${roundId}-${agent.id}`, text);
-      } catch {
-        updateAgentMessage(`${roundId}-${agent.id}`, "⚠ Could not reach the backend retriever.");
-      }
-      setStreaming((p) => ({ ...p, [agent.id]: false }));
-      return;
-    }
-
-    // === REAL BACKEND BUG ANALYZER (second agent) ===
-    if (agent.id === "analyzer") {
-      try {
-        const resp = await fetch("http://127.0.0.1:8000/devops/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            query, 
-            session_id: roundId,
-          }),
-        });
-        const data = await resp.json();
-        const text = data.bug_analysis || "No analysis generated.";
-        updateAgentMessage(`${roundId}-${agent.id}`, text);
-        
-        // Return data so handleSubmit can decide whether to run Fixer
-        setStreaming((p) => ({ ...p, [agent.id]: false }));
-        return data;   // ← important for dynamic routing
-      } catch {
-        updateAgentMessage(`${roundId}-${agent.id}`, "⚠ Could not reach the backend analyzer.");
-        setStreaming((p) => ({ ...p, [agent.id]: false }));
-        return { has_bug: true }; // default to running the pipeline
-      }
-    }
-
-    // === REAL BACKEND FIX GENERATOR (third agent) ===
-    if (agent.id === "fixer") {
-      try {
-        const resp = await fetch("http://127.0.0.1:8000/devops/fix", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            query, 
-            session_id: roundId,   // backend pulls retrieved_code + bug_analysis from DevOpsState
-          }),
-        });
-        const data = await resp.json();
-        const text = data.generated_fix || "No fix generated.";
-        updateAgentMessage(`${roundId}-${agent.id}`, text);
-      } catch {
-        updateAgentMessage(`${roundId}-${agent.id}`, "⚠ Could not reach the backend fix generator.");
-      }
-      setStreaming((p) => ({ ...p, [agent.id]: false }));
-      return;
-    }
-
-    // === REAL BACKEND REVIEWER (fourth & final agent) ===
-    if (agent.id === "reviewer") {
-      try {
-        const resp = await fetch("http://127.0.0.1:8000/devops/review", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            query, 
-            session_id: roundId,   // backend pulls full context from DevOpsState
-          }),
-        });
-        const data = await resp.json();
-        const text = data.review_feedback || "No review feedback generated.";
-        updateAgentMessage(`${roundId}-${agent.id}`, text);
-      } catch {
-        updateAgentMessage(`${roundId}-${agent.id}`, "⚠ Could not reach the backend reviewer.");
-      }
-      setStreaming((p) => ({ ...p, [agent.id]: false }));
-      return;
-    }
-
-    // === All 4 agents are now real backend agents ===
-    // If we reach here, it means an unknown agent id was passed
-    setStreaming((p) => ({ ...p, [agent.id]: false }));
+    // ... old individual agent logic removed ...
   };
+  */
 
   const handleSubmit = useCallback(
     async (prefill) => {
@@ -381,20 +306,63 @@ export default function DevOpsAgentChat() {
 
       setHistory((p) => [...p, { type: "user", text: q }, { type: "agents", roundId }]);
 
-      // === Dynamic Agentic Flow (Analyzer decides the path) ===
-      await streamAgent(AGENTS[0], q, roundId);                    // 1. Retriever
+      // === NEW: Single LangGraph Pipeline Call ===
+      const namespace = localStorage.getItem('namespace');
 
-      const analyzerData = await streamAgent(AGENTS[1], q, roundId); // 2. Analyzer (returns has_bug)
+      // Show cards with staggered appearance + start thinking bubble for each
+      AGENTS.forEach((agent, index) => {
+        setTimeout(() => {
+          setVisibleCards((p) => ({ ...p, [`${roundId}-${agent.id}`]: true }));
+          setStreaming((p) => ({ ...p, [agent.id]: true })); // ← Show thinking bubble
+        }, index * 160);
+      });
 
-      const hasRealBug = analyzerData?.has_bug !== false;
+      const runResp = await fetch("http://127.0.0.1:8000/devops/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: q,
+          namespace: namespace || null,
+          session_id: roundId,
+        }),
+      });
 
-      if (hasRealBug) {
-        await streamAgent(AGENTS[2], q, roundId);                  // 3a. Fix Generator (only if bug exists)
-      } else {
-        updateAgentMessage(`${roundId}-fixer`, "✅ Analyzer determined there is no actionable bug. The code is correct.");
-      }
+      const runData = await runResp.json();
+      const final = runData.final_state || {};
 
-      await streamAgent(AGENTS[3], q, roundId);                    // 4. Reviewer (always runs)
+      // Populate results progressively and stop the thinking bubble for each card
+      const populateDelays = [650, 1150, 1650, 2150];
+
+      // 1. Retriever
+      setTimeout(() => {
+        updateAgentMessage(`${roundId}-retriever`, final.retrieved_code || "No relevant code found.");
+        setStreaming((p) => ({ ...p, retriever: false })); // ← Hide bubble, show content
+      }, populateDelays[0]);
+
+      // 2. Analyzer
+      setTimeout(() => {
+        updateAgentMessage(`${roundId}-analyzer`, final.bug_analysis || "No analysis generated.");
+        setStreaming((p) => ({ ...p, analyzer: false }));
+      }, populateDelays[1]);
+
+      // 3. Fixer
+      setTimeout(() => {
+        if (final.has_bug) {
+          updateAgentMessage(`${roundId}-fixer`, final.generated_fix || "No fix generated.");
+        } else {
+          updateAgentMessage(
+            `${roundId}-fixer`,
+            "✅ Analyzer determined there is **no actionable bug**. The code is correct."
+          );
+        }
+        setStreaming((p) => ({ ...p, fixer: false }));
+      }, populateDelays[2]);
+
+      // 4. Reviewer
+      setTimeout(() => {
+        updateAgentMessage(`${roundId}-reviewer`, final.review_feedback || "No review generated.");
+        setStreaming((p) => ({ ...p, reviewer: false }));
+      }, populateDelays[3]);
 
       setIsLoading(false);
     },
@@ -452,7 +420,7 @@ export default function DevOpsAgentChat() {
             </Link>
             <div>
               <div className="text-slate-100 text-sm font-bold" style={{ fontFamily: "'Syne',sans-serif" }}>
-                DevOps Agent Pipeline
+                Bug Analyzer Agent Pipeline
               </div>
               <div className="text-[10px] text-slate-600 tracking-widest uppercase mt-0.5" style={{ fontFamily: "'Syne',sans-serif" }}>
                 4-stage · Retrieve → Analyze → Fix → Review
